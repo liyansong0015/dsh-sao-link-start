@@ -1,0 +1,60 @@
+{
+  "name": "dsh-sao-link-start",
+  "version": "1.3.0",
+  "type": "module",
+  "description": "Full-screen SAO-inspired startup animation for DeepSeek Harness with adjustable beam, dial, language, and character settings.",
+  "license": "Unlicense",
+  "author": "liyansong0015",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liyansong0015/dsh-sao-link-start.git"
+  },
+  "homepage": "https://github.com/liyansong0015/dsh-sao-link-start#readme",
+  "bugs": {
+    "url": "https://github.com/liyansong0015/dsh-sao-link-start/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "startup-animation",
+    "sao",
+    "ui"
+  ],
+  "main": "./index.js",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "check": "node --check client.js && node --check index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  }
+}
