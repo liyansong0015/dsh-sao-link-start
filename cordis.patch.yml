@@ -1,0 +1,10 @@
+- insert:
+    - id: sao-link-start
+      name: dsh-sao-link-start
+      config:
+        beamSpeed: 1
+        beamLength: 1
+        beamDensity: 1
+        dialScale: 0.65
+        languageName: Japanese
+        characterName: Kirito(M)
