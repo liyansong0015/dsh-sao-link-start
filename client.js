@@ -14,7 +14,7 @@
  *  13.8s  fade back to the app
  */
 window.__ModuleLoader__.load({
-  id: '@local/sao-link-start',
+  id: 'dsh-sao-link-start',
   factory(require) {
     const React = require('react');
     const {
