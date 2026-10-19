@@ -1,8 +1,8 @@
 {
   "name": "dsh-sao-link-start",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "type": "module",
-  "description": "Full-screen SAO-inspired startup animation for DeepSeek Harness with adjustable beam, dial, language, and character settings.",
+  "description": "Full-screen SAO-inspired startup animation for DeepSeek Harness with adjustable beam, dial, language, and character settings, plus an opt-in performance mode that keeps the overlay off the layout pipeline.",
   "license": "Unlicense",
   "author": "liyansong0015",
   "repository": {

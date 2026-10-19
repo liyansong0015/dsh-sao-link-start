@@ -13,6 +13,7 @@
  *  11.0s  the character-registration tab and dialog
  *  13.8s  fade back to the app
  */
+// [dsp-perf-toggle-patch v2] Optional Tier-1 performance path, toggled from Settings → SAO Link Start.
 window.__ModuleLoader__.load({
   id: 'dsh-sao-link-start',
   factory(require) {
@@ -47,6 +48,31 @@ window.__ModuleLoader__.load({
       characterName: settingText(bootConfig.characterName, 'Kirito(M)', 32),
     };
 
+    /* ------------------------------------------------- performance mode (opt-in) */
+    // Off = the original 1.3.0 path: five SVGs rewritten with width/height/fontSize
+    // every frame, 2x device pixel ratio, AudioContext created during boot.
+    // On  = Tier-1 path: compositor-only dials, capped DPR with adaptive fallback,
+    //       deferred audio. Chosen on the "SAO Link Start" settings page and read
+    //       on every overlay mount, so Ctrl+Alt+L replays with the new choice.
+    const PERF_STORAGE_KEY = 'dsh:sao-link-start:performance-mode';
+    function readPerformanceMode() {
+      try {
+        const stored = window.localStorage.getItem(PERF_STORAGE_KEY);
+        if (stored === 'off') return false;
+        if (stored === 'on') return true;
+      } catch (err) {
+        /* storage can be blocked; the fast path is the default */
+      }
+      return true;
+    }
+    function writePerformanceMode(enabled) {
+      try {
+        window.localStorage.setItem(PERF_STORAGE_KEY, enabled ? 'on' : 'off');
+      } catch (err) {
+        /* the checkbox still applies to this page even without storage */
+      }
+    }
+
     /* ------------------------------------------------------------------ text */
 
     const EN = {
@@ -59,6 +85,8 @@ window.__ModuleLoader__.load({
       dialScale: 'Dial size', dialScaleHint: 'Scales all five circular HUD dials.',
       languageName: 'Language name', languageNameHint: 'Text shown beside the Language pill.',
       characterName: 'Character name', characterNameHint: 'Name shown in the final registration dialog.',
+      perfMode: 'Performance mode',
+      perfModeHint: 'Off restores the original per-frame layout writes (heavier). Applies on the next replay (Ctrl+Alt+L) or app start.',
       overridden: 'Overridden', reset: 'Reset to default', readOnly: 'Settings are read-only.',
       unavailable: 'The SAO animation plugin is not loaded.', save: 'Save', saving: 'Saving…',
       saveFailed: 'The values could not be saved.', invalidNumber: 'Enter a valid number.',
@@ -74,6 +102,8 @@ window.__ModuleLoader__.load({
       dialScale: '圆盘整体大小', dialScaleHint: '统一缩放五个圆形 HUD。',
       languageName: '语言名称', languageNameHint: '显示在 Language 标签右侧，例如 Japanese。',
       characterName: '人物名称', characterNameHint: '显示在最后的角色确认框中，例如 Kirito(M)。',
+      perfMode: '性能模式（圆盘只走合成器）',
+      perfModeHint: '关闭后回到原版逐帧改宽高/字号的写法，更吃 CPU。改完按 Ctrl+Alt+L 重播即生效，下次启动也生效。',
       overridden: '已覆盖', reset: '恢复默认', readOnly: '当前设置为只读。',
       unavailable: 'SAO 动画插件当前未加载。', save: '保存', saving: '保存中…',
       saveFailed: '设置保存失败，请检查数值。', invalidNumber: '请输入有效数字。',
@@ -103,7 +133,8 @@ window.__ModuleLoader__.load({
      * Perspective projection turns them into streaks that swell as they pass,
      * with the original speed/birth increments, adapted to this shorter intro.
      */
-    function Burst() {
+    function Burst(props) {
+      const perfMode = props.perfMode !== false;
       const ref = useRef(null);
 
       useEffect(() => {
@@ -112,7 +143,7 @@ window.__ModuleLoader__.load({
         const ctx = canvas.getContext('2d');
         if (!ctx) return undefined;
 
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        let dpr = Math.min(window.devicePixelRatio || 1, perfMode ? 1.5 : 2);
         let w = 0;
         let h = 0;
         let focal = 1;
@@ -154,12 +185,26 @@ window.__ModuleLoader__.load({
         const t0 = performance.now();
         let raf = 0;
         let last = 0;
+        // Performance mode: adaptive quality — keep an EMA of frame times and
+        // degrade once (1x DPR, no capsule noses) when the machine cannot keep up.
+        let slowFrames = 0;
+        let degraded = false;
+        let drawNoses = true;
 
         const tick = (now) => {
           const t = now - t0;
           const dt = last ? Math.min(48, now - last) : 16;
           last = now;
           const k = dt / 16.67;
+          if (perfMode) {
+            slowFrames = slowFrames * 0.92 + (dt > 24 ? 1 : 0);
+            if (!degraded && t > 160 && slowFrames > 2.2) {
+              degraded = true;
+              drawNoses = false;
+              dpr = 1;
+              resize();
+            }
+          }
 
           if (now - lastEmit > 100 && emitted <= 500 * SETTINGS.beamDensity) {
             lastEmit = now;
@@ -213,7 +258,7 @@ window.__ModuleLoader__.load({
             ctx.fill();
             // Restore the rounded capsule nose while keeping its projected
             // radius bounded; the bound prevents the old full-screen flash.
-            if (dN > clip * 1.02 && nearWidth < 70) {
+            if ((!perfMode || drawNoses) && dN > clip * 1.02 && nearWidth < 70) {
               ctx.beginPath();
               ctx.arc(xn, yn, nearWidth, 0, Math.PI * 2);
               ctx.fill();
@@ -238,7 +283,7 @@ window.__ModuleLoader__.load({
           cancelAnimationFrame(raf);
           window.removeEventListener('resize', resize);
         };
-      }, []);
+      }, [perfMode]);
 
       return h('canvas', { className: 'sao-burst-canvas', 'aria-hidden': 'true', ref });
     }
@@ -339,16 +384,30 @@ window.__ModuleLoader__.load({
       { label: 'Taste', ok: 6.75, frames: [[5.9,.5,.51,.025],[6.1,.52,.48,.10],[6.35,.59,.15,1.08],[6.5,.61,.13,1.2],[6.7,.63,.12,1.28],[6.9,.55,.14,1.12],[7.15,.91,.69,.20]] },
       { label: 'Smell', ok: 7.0, frames: [[6.1,.48,.54,.025],[6.4,.44,.57,.10],[6.6,.1,.9,.96],[6.9,.09,.78,1.04],[7.1,.47,.84,.8],[7.35,.91,.88,.20]] },
     ];
-    function DialSequence() {
+    function DialSequence(props) {
+      const perfMode = props.perfMode !== false;
       const ref = useRef(null);
       useEffect(() => {
         const root = ref.current;
         const nodes = [...root.children];
+        // Performance mode caches per-dial writes so only real changes touch the
+        // style system; the !perfMode branch below is the original 1.3.0 path.
+        const slots = perfMode ? nodes.map((node) => ({
+          chip: node.querySelector('.sao-chip'),
+          opacity: null,
+          filter: null,
+          z: null,
+          text: null,
+        })) : null;
+        let width = root.clientWidth;
+        let height = root.clientHeight;
+        const measure = () => { width = root.clientWidth; height = root.clientHeight; };
+        if (perfMode) window.addEventListener('resize', measure);
         const t0 = performance.now();
         let raf;
         const tick = (now) => {
           const t = (now - t0) / 1000;
-          const width = root.clientWidth, height = root.clientHeight;
+          if (!perfMode) { width = root.clientWidth; height = root.clientHeight; }
           DIAL_PATHS.forEach((path, index) => {
             const node = nodes[index], frames = path.frames;
             if (t < frames[0][0] || t >= 7.95) { node.style.opacity = '0'; return; }
@@ -362,28 +421,46 @@ window.__ModuleLoader__.load({
             const y = a[2] + (b[2] - a[2]) * u;
             const diameter = a[3] + (b[3] - a[3]) * u;
             const exit = Math.max(0, Math.min(1, (t - 7.7) / .25));
-            node.style.opacity = String(Math.min(1, (t - frames[0][0]) / .08));
+            const opacity = String(Math.min(1, (t - frames[0][0]) / .08));
             const size = diameter * height * SETTINGS.dialScale;
-            node.style.width = `${size}px`;
-            node.style.height = `${size}px`;
-            node.style.fontSize = `${size * .075}px`;
-            node.style.transform = `translate(${x * width + exit * width * .2}px,${y * height}px) translate(-50%,-50%)`;
-            node.style.filter = t >= 7.4 ? 'hue-rotate(-52deg) saturate(1.35)' : 'none';
-            node.style.zIndex = t >= frames[frames.length - 1][0] ? '10' : String(5 - index);
-            node.querySelector('.sao-chip').textContent = t >= path.ok ? 'OK' : path.label;
+            const chipText = t >= path.ok ? 'OK' : path.label;
+            const zIndex = t >= frames[frames.length - 1][0] ? '10' : String(5 - index);
+            if (!perfMode) {
+              /* original path: rewrite layout-affecting styles every frame */
+              node.style.opacity = opacity;
+              node.style.width = `${size}px`;
+              node.style.height = `${size}px`;
+              node.style.fontSize = `${size * .075}px`;
+              node.style.transform = `translate(${x * width + exit * width * .2}px,${y * height}px) translate(-50%,-50%)`;
+              node.style.filter = t >= 7.4 ? 'hue-rotate(-52deg) saturate(1.35)' : 'none';
+              node.style.zIndex = zIndex;
+              node.querySelector('.sao-chip').textContent = chipText;
+              return;
+            }
+            /* performance path: fixed 200x200 box scaled on the compositor */
+            const slot = slots[index];
+            if (slot.opacity !== opacity) { node.style.opacity = opacity; slot.opacity = opacity; }
+            node.style.transform = `translate(${x * width + exit * width * .2}px,${y * height}px) scale(${size / 200}) translate(-50%,-50%)`;
+            const filter = t >= 7.4 ? 'hue-rotate(-52deg) saturate(1.35)' : 'none';
+            if (slot.filter !== filter) { node.style.filter = filter; slot.filter = filter; }
+            if (slot.z !== zIndex) { node.style.zIndex = zIndex; slot.z = zIndex; }
+            if (slot.text !== chipText) { slot.chip.textContent = chipText; slot.text = chipText; }
           });
           if (t < 8) raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-      }, []);
+        return () => {
+          cancelAnimationFrame(raf);
+          if (perfMode) window.removeEventListener('resize', measure);
+        };
+      }, [perfMode]);
       return h('div', { className: 'sao-field sao-tracked-field', ref },
         DIAL_PATHS.map((path, i) => h(Dial, { key: path.label, cls: 'sao-tracked-dial', chip: path.label, seed: i })));
     }
 
     /* ---------------------------------------------------------------- audio */
 
-    function createBootAudio() {
+    function createBootAudio(elapsed = 0) {
       let ac = null;
       try {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -441,17 +518,21 @@ window.__ModuleLoader__.load({
 
       const schedule = () => {
         if (ac.state !== 'running') return;
-        air({ t0: 0.95, dur: 1.7, from: 420, to: 3600, gain: 0.1 });
-        [5.2, 5.4, 6.45, 6.75, 7.0].forEach((d, i) => tone({
-          f: 1180 + i * 120, type: 'sine', t0: d, dur: 0.14, gain: 0.03,
-        }));
-        [7.4, 7.5, 7.6].forEach((d) => tone({
-          f: 1760, type: 'triangle', t0: d, dur: 0.18, gain: 0.035,
-        }));
-        [8.0, 8.45, 9.9, 11.0, 11.65].forEach((d) => tone({
-          f: 880, type: 'square', t0: d, dur: 0.05, gain: 0.018,
-        }));
-        air({ t0: 13.7, dur: 0.5, from: 2200, to: 300, gain: 0.04 });
+        // The context may start late (first gesture). Only queue cues that are
+        // still ahead; replaying passed cues would desync from the animation.
+        const at = (seconds) => Math.max(0, seconds - elapsed);
+        const pending = (seconds) => seconds - elapsed > 0.04;
+        if (pending(0.95)) air({ t0: at(0.95), dur: 1.7, from: 420, to: 3600, gain: 0.1 });
+        [5.2, 5.4, 6.45, 6.75, 7.0].forEach((d, i) => {
+          if (pending(d)) tone({ f: 1180 + i * 120, type: 'sine', t0: at(d), dur: 0.14, gain: 0.03 });
+        });
+        [7.4, 7.5, 7.6].forEach((d) => {
+          if (pending(d)) tone({ f: 1760, type: 'triangle', t0: at(d), dur: 0.18, gain: 0.035 });
+        });
+        [8.0, 8.45, 9.9, 11.0, 11.65].forEach((d) => {
+          if (pending(d)) tone({ f: 880, type: 'square', t0: at(d), dur: 0.05, gain: 0.018 });
+        });
+        if (pending(13.7)) air({ t0: at(13.7), dur: 0.5, from: 2200, to: 300, gain: 0.04 });
       };
 
       try {
@@ -500,6 +581,7 @@ window.__ModuleLoader__.load({
         }
       });
       const audioRef = useRef(null);
+      const [perfMode] = useState(readPerformanceMode);
 
       useEffect(() => {
         const finish = () => setLeaving(true);
@@ -527,17 +609,37 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (reduced) return undefined;
-        audioRef.current = createBootAudio();
+        if (!perfMode) {
+          audioRef.current = createBootAudio();
+          return () => {
+            if (audioRef.current) audioRef.current.close();
+            audioRef.current = null;
+          };
+        }
+        // Performance mode: build the AudioContext on the first user gesture.
+        // Doing it during boot costs a thread plus main-thread work while DSH is
+        // still loading plugin bundles, and Chromium suspends it until then.
+        const startedAt = performance.now();
+        const events = ['pointerdown', 'keydown', 'touchstart'];
+        let disposed = false;
+        const start = () => {
+          events.forEach((name) => window.removeEventListener(name, start, true));
+          if (disposed) return;
+          audioRef.current = createBootAudio((performance.now() - startedAt) / 1000);
+        };
+        events.forEach((name) => window.addEventListener(name, start, true));
         return () => {
+          disposed = true;
+          events.forEach((name) => window.removeEventListener(name, start, true));
           if (audioRef.current) audioRef.current.close();
           audioRef.current = null;
         };
-      }, [reduced]);
+      }, [reduced, perfMode]);
 
       if (done) return null;
 
       return h('div', {
-        className: leaving ? 'sao-root is-leaving' : 'sao-root',
+        className: 'sao-root' + (perfMode ? ' is-perf' : '') + (leaving ? ' is-leaving' : ''),
         'aria-hidden': 'true',
         role: 'presentation',
         onClick: () => setLeaving(true),
@@ -545,10 +647,10 @@ window.__ModuleLoader__.load({
         h('style', null, CSS),
         h('div', { className: 'sao-bg' }),
 
-        !reduced && h(Burst),
+        !reduced && h(Burst, { perfMode }),
 
 
-        !reduced && h(DialSequence),
+        !reduced && h(DialSequence, { perfMode }),
 
         h('div', { className: 'sao-lang' },
           h('span', { className: 'sao-pill sao-pill-lang' }, 'Language'),
@@ -661,6 +763,8 @@ window.__ModuleLoader__.load({
 .sao-field{position:absolute;inset:0;pointer-events:none}
 .sao-tracked-dial{position:absolute;left:0;top:0;width:200px;height:200px;
   opacity:0;transform-origin:center;will-change:transform}
+/* performance mode: the same 200x200 box is scaled instead of resized */
+.sao-root.is-perf .sao-tracked-dial{font-size:15px;transform-origin:0 0;will-change:transform,opacity}
 .sao-tracked-dial .sao-chip{width:28%;height:9%;font-size:inherit;letter-spacing:0;
   padding:0;box-shadow:none;background:#dcf4ea;color:#69bdbe}
 .sao-tracked-dial .sao-dial-svg{filter:none}
@@ -729,6 +833,15 @@ window.__ModuleLoader__.load({
 .sao-hint{position:absolute;left:50%;bottom:3vmin;transform:translateX(-50%);
   font-size:clamp(9px,1.05vmin,13px);letter-spacing:.22em;color:#9aa9a4;white-space:nowrap;
   opacity:0;animation:sao-fade .6s ease 2.6s both,sao-blink 2.6s ease-in-out 3.2s infinite}
+
+/* settings-page switch for the optional performance path */
+.sao-perf-toggle{display:flex;align-items:flex-start;gap:1.1em;box-sizing:border-box;
+  width:100%;max-width:760px;margin:0 0 1.6em;padding:1.1em 1.3em;cursor:pointer;
+  border:1px solid rgba(148,163,184,.22);border-radius:10px;background:rgba(148,163,184,.06);
+  color:inherit;font:inherit;line-height:1.55}
+.sao-perf-toggle input{flex:0 0 auto;width:16px;height:16px;margin:.18em 0 0;accent-color:#38bdf8;cursor:pointer}
+.sao-perf-toggle-text{display:flex;flex-direction:column;gap:.28em;font-size:13px}
+.sao-perf-toggle-text small{font-size:12px;opacity:.72;line-height:1.5}
 
 @media (max-width:900px){
   .sao-login{height:auto;padding:3vmin 4vmin;flex-direction:column;align-items:flex-start;gap:2vmin}
@@ -802,6 +915,23 @@ window.__ModuleLoader__.load({
       }, t('restartHint')));
     }
 
+    function PerfModeToggle(props) {
+      const [enabled, setEnabled] = useState(readPerformanceMode);
+      return h('label', { className: 'sao-perf-toggle' },
+        h('input', {
+          type: 'checkbox',
+          checked: enabled,
+          onChange: () => {
+            const next = !enabled;
+            writePerformanceMode(next);
+            setEnabled(next);
+          },
+        }),
+        h('span', { className: 'sao-perf-toggle-text' },
+          h('strong', null, props.t('perfMode')),
+          h('small', null, props.t('perfModeHint'))));
+    }
+
     function SaoSettingsSection(props) {
       return h('section', {
         style: { width: '100%', maxWidth: 760, padding: '8px 0 32px' },
@@ -816,6 +946,7 @@ window.__ModuleLoader__.load({
             fontSize: 14, lineHeight: 1.6,
           },
         }, props.t('settingsDescription'))),
+      h(PerfModeToggle, { t: props.t }),
       h(SaoSettingsCard, props));
     }
 

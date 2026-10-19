@@ -28,6 +28,8 @@ Audio.
 - Click or press `Escape` to skip. Press `Ctrl+Alt+L` to replay while the
   Harness page has keyboard focus.
 - Respects reduced-motion preferences.
+- An opt-in **Performance mode** (on by default) that keeps the overlay out of
+  the layout pipeline; see [Performance mode](#performance-mode).
 
 ### Install
 
@@ -50,8 +52,33 @@ then select **SAO Link Start** in the left navigation.
 | Dial size | `0.35–1.2`, default `0.65` | Scale of the five HUD dials |
 | Language name | default `Japanese` | Label beside the Language pill |
 | Character name | default `Kirito(M)` | Name in the registration dialog |
+| Performance mode | on by default | Skips per-frame layout work; see below |
 
 Save settings and restart Harness to preview the new values.
+
+### Performance mode
+
+**Settings → SAO Link Start → Performance mode** — on by default, uncheck it to
+restore the original frame-by-frame code path. Both modes look identical.
+
+When enabled, the overlay stays off the layout pipeline:
+
+- the five HUD dials animate with a compositor-only `transform: scale()` on a
+  fixed 200×200 box instead of rewriting `width`/`height`/`font-size` every frame;
+- per-dial style writes are cached, so `filter`, `z-index`, and the chip text are
+  only written when they actually change;
+- the beam canvas caps the device pixel ratio at 1.5 and falls back to 1x with
+  fewer capsule details when frame times stay long;
+- the `AudioContext` is created on the first user gesture, and sound cues that
+  would already be in the past are skipped instead of replayed late.
+
+The choice is stored in the page's `localStorage`
+(`dsh:sao-link-start:performance-mode`) and applies on the next replay
+(`Ctrl+Alt+L`) or the next Harness start; toggling it does not require a restart.
+
+Measured with a replay-isolated headless Chromium run of one overlay
+(`Ctrl+Alt+L`, same environment): layout count 48 → 10, layout time
+0.104 s → 0.004 s, style-recalculation time 1.105 s → 0.340 s.
 
 ### Permissions and network use
 
@@ -76,6 +103,7 @@ Canvas、CSS、SVG 与 Web Audio 实时生成。
 - 点击画面或按 `Escape` 跳过；Harness 页面获得键盘焦点时，可按
   `Ctrl+Alt+L` 重播。
 - 支持系统的减少动态效果偏好。
+- 内置可选的**性能模式**（默认开启），让动画不再逐帧触发布局；见[性能模式](#性能模式)。
 
 ### 安装
 
@@ -87,6 +115,26 @@ dsh plugin --profile desktop add github:liyansong0015/dsh-sao-link-start
 
 安装后重启 Harness。从账号菜单打开**设置**，在左侧选择
 **SAO 连结开始动画**即可调节参数。
+
+### 性能模式
+
+**设置 → SAO 连结开始动画 → 性能模式**，默认开启；取消勾选即回到原版的逐帧代码路径，
+两种模式的画面完全一致。
+
+开启后动画不再逐帧触发布局：
+
+- 五块 HUD 圆盘改为对固定 200×200 盒子做合成器 `transform: scale()`，
+  不再每帧重写 `width`/`height`/`font-size`；
+- 每个圆盘的样式写入会做缓存，`filter`、`z-index` 与 chip 文本只在真正变化时写入；
+- 光束 canvas 的 device pixel ratio 上限为 1.5，帧时间持续偏长时自动降到 1x
+  并减少胶囊细节；
+- `AudioContext` 延迟到首个用户手势才创建，已经错过的音效不再补播。
+
+选择保存在页面 `localStorage`（`dsh:sao-link-start:performance-mode`），
+在下次重播（`Ctrl+Alt+L`）或下次启动 Harness 时生效——单纯切换开关不需要重启。
+
+实测（重放隔离的无头 Chromium，一次完整动画，同一环境）：布局次数 48 → 10，
+布局耗时 0.104 s → 0.004 s，样式重算耗时 1.105 s → 0.340 s。
 
 ### 权限与联网
 
