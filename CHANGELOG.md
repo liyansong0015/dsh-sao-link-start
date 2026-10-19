@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0
+
+- Add an optional **Tunnel only** intro (Settings → SAO Link Start, off by
+  default). When enabled it plays only the perspective beam fly-through: the
+  five-sense dials, language pill, login panel and character registration are
+  not rendered, the overlay fades out at ~3.7 s and unmounts at ~4.3 s instead
+  of 14.4 s, and audio keeps only the opening and exit whooshes.
+- Preference key: `dsh:sao-link-start:tunnel-only`; applies on the next replay
+  (Ctrl+Alt+L) or the next Harness start. Compatibility mode and Tunnel only are
+  independent toggles.
+
 ## 1.4.1
 
 - Rename the 1.4.0 option from "Performance mode" to **Compatibility mode** and

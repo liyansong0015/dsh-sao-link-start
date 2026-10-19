@@ -31,6 +31,8 @@ Audio.
 - The original rendering path is the default; an optional **Compatibility mode**
   (off by default) gives low-end GPUs a compositor-friendly fallback; see
   [Compatibility mode](#compatibility-mode).
+- An optional **Tunnel only** intro (off by default) that plays just the beam
+  fly-through and skips the rest; see [Tunnel only](#tunnel-only).
 
 ### Install
 
@@ -54,6 +56,7 @@ then select **SAO Link Start** in the left navigation.
 | Language name | default `Japanese` | Label beside the Language pill |
 | Character name | default `Kirito(M)` | Name in the registration dialog |
 | Compatibility mode | off by default | Low-end GPU fallback that avoids per-frame layout; see below |
+| Tunnel only | off by default | Play just the beam fly-through; see below |
 
 Save settings and restart Harness to preview the new values.
 
@@ -85,6 +88,22 @@ Measured with a replay-isolated headless Chromium run of one overlay
 37 → 9, layout time 0.087 s → 0.028 s, style-recalculation time
 0.979 s → 0.252 s.
 
+### Tunnel only
+
+**Settings → SAO Link Start → Tunnel only** is **off by default**. Check it to
+play just the perspective beam fly-through and skip everything after it:
+
+- the five-sense HUD dials, the language pill, the login panel and the character
+  registration dialog are not rendered at all;
+- the overlay fades out at ~3.7 s and unmounts at ~4.3 s instead of 14.4 s;
+- only the opening whoosh and a short exit whoosh play — no dial/panel cues;
+- the beam/dial/language settings above only affect the full sequence.
+
+The preference is stored in `localStorage`
+(`dsh:sao-link-start:tunnel-only`) and applies on the next replay
+(`Ctrl+Alt+L`) or the next Harness start. Compatibility mode and Tunnel only are
+independent: if the full sequence stutters, use Compatibility mode.
+
 ### Permissions and network use
 
 The plugin adds a startup overlay and a settings section. It does not request
@@ -110,6 +129,8 @@ Canvas、CSS、SVG 与 Web Audio 实时生成。
 - 支持系统的减少动态效果偏好。
 - 默认使用原版渲染（即性能模式）；另提供可选的**兼容模式**（默认关闭），
   给核显/低配机器一个更省主线程的回退路径；见[兼容模式](#兼容模式)。
+- 可选**仅光束穿行**片头（默认关闭）：只播放光束穿行，跳过后面所有动画；
+  见[仅光束穿行](#仅光束穿行)。
 
 ### 安装
 
@@ -142,6 +163,20 @@ dsh plugin --profile desktop add github:liyansong0015/dsh-sao-link-start
 
 实测（重放隔离的无头 Chromium，一次完整动画，同一环境，原版 → 兼容模式）：
 布局次数 37 → 9，布局耗时 0.087 s → 0.028 s，样式重算耗时 0.979 s → 0.252 s。
+
+### 仅光束穿行
+
+**设置 → SAO 连结开始动画 → 仅光束穿行**，**默认关闭**。勾选后只播放最前面的
+透视光束穿行，后面全部跳过：
+
+- 五感 HUD 圆盘、语言标签、登录面板、角色注册界面对话框完全不渲染；
+- 遮罩约 3.7 秒开始淡出、约 4.3 秒卸载（完整序列是 14.4 秒）；
+- 只保留开场音效和一段收尾音效，没有圆盘/面板提示音；
+- 上面的光束/圆盘/语言参数只影响完整序列。
+
+选择保存在 `localStorage`（`dsh:sao-link-start:tunnel-only`），
+在下次重播（`Ctrl+Alt+L`）或下次启动 Harness 时生效。兼容模式与仅光束穿行是
+两个独立开关：完整序列卡顿时再开兼容模式。
 
 ### 权限与联网
 

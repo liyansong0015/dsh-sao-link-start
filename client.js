@@ -14,6 +14,7 @@
  *  13.8s  fade back to the app
  */
 // [dsh-compat-mode-patch v3] Optional compatibility mode (Settings → SAO Link Start), off by default.
+// [dsh-tunnel-only-patch v4] Optional "tunnel only" intro (Settings → SAO Link Start).
 window.__ModuleLoader__.load({
   id: 'dsh-sao-link-start',
   factory(require) {
@@ -74,6 +75,25 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // Tunnel-only intro: play just the beam fly-through, then fade out at ~3.7s.
+    // The five-sense dials, language pill, login panel and character registration
+    // are skipped. Read on every overlay mount, like the compatibility flag.
+    const TUNNEL_ONLY_STORAGE_KEY = 'dsh:sao-link-start:tunnel-only';
+    function readTunnelOnly() {
+      try {
+        return window.localStorage.getItem(TUNNEL_ONLY_STORAGE_KEY) === 'on';
+      } catch (err) {
+        return false;
+      }
+    }
+    function writeTunnelOnly(enabled) {
+      try {
+        window.localStorage.setItem(TUNNEL_ONLY_STORAGE_KEY, enabled ? 'on' : 'off');
+      } catch (err) {
+        /* the checkbox still applies to this page even without storage */
+      }
+    }
+
     /* ------------------------------------------------------------------ text */
 
     const EN = {
@@ -88,6 +108,8 @@ window.__ModuleLoader__.load({
       characterName: 'Character name', characterNameHint: 'Name shown in the final registration dialog.',
       compatMode: 'Compatibility mode (low-end fallback)',
       compatModeHint: 'Off (default) = original rendering, i.e. the high-fidelity performance path (2x DPR, per-frame layout). On = compositor-friendly fallback for low-end GPUs or stutter: DPR capped at 1.5, transform-only dials, deferred audio. Applies on the next replay (Ctrl+Alt+L) or app start.',
+      tunnelOnly: 'Tunnel only (skip dials and panels)',
+      tunnelOnlyHint: 'On plays just the beam fly-through and fades out at about 4 seconds; the five-sense dials, language pill, login and character panels are skipped. Applies on the next replay (Ctrl+Alt+L) or app start.',
       overridden: 'Overridden', reset: 'Reset to default', readOnly: 'Settings are read-only.',
       unavailable: 'The SAO animation plugin is not loaded.', save: 'Save', saving: 'Saving…',
       saveFailed: 'The values could not be saved.', invalidNumber: 'Enter a valid number.',
@@ -105,6 +127,8 @@ window.__ModuleLoader__.load({
       characterName: '人物名称', characterNameHint: '显示在最后的角色确认框中，例如 Kirito(M)。',
       compatMode: '兼容模式（低配回退）',
       compatModeHint: '默认关闭 = 使用原版渲染，即性能模式（2x DPR、逐帧精确布局）。开启后改用合成器友好的精简路径（DPR 上限 1.5、圆盘只走 transform、音频延后），适合核显/低配机器或卡顿时。改完按 Ctrl+Alt+L 重播即生效，下次启动也生效。',
+      tunnelOnly: '仅光束穿行（跳过后续动画）',
+      tunnelOnlyHint: '开启后只播放最前面的光束穿梭，约 4 秒淡出结束；五感圆盘、语言、登录和角色注册全部跳过。改完按 Ctrl+Alt+L 重播即生效，下次启动也生效。',
       overridden: '已覆盖', reset: '恢复默认', readOnly: '当前设置为只读。',
       unavailable: 'SAO 动画插件当前未加载。', save: '保存', saving: '保存中…',
       saveFailed: '设置保存失败，请检查数值。', invalidNumber: '请输入有效数字。',
@@ -117,6 +141,9 @@ window.__ModuleLoader__.load({
     const T_UNMOUNT = 14.4;
     const T_REDUCED_LEAVE = 700;
     const T_REDUCED_UNMOUNT = 1050;
+    // Tunnel-only mode: start the fade at 3.7s; the leaving effect unmounts
+    // ~620ms later, so the overlay is gone around 4.3s.
+    const T_TUNNEL_LEAVE = 3700;
 
     /* ------------------------------------------------------------------ art */
 
@@ -461,7 +488,7 @@ window.__ModuleLoader__.load({
 
     /* ---------------------------------------------------------------- audio */
 
-    function createBootAudio(elapsed = 0) {
+    function createBootAudio(elapsed = 0, tunnelOnly = false) {
       let ac = null;
       try {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -524,6 +551,11 @@ window.__ModuleLoader__.load({
         const at = (seconds) => Math.max(0, seconds - elapsed);
         const pending = (seconds) => seconds - elapsed > 0.04;
         if (pending(0.95)) air({ t0: at(0.95), dur: 1.7, from: 420, to: 3600, gain: 0.1 });
+        if (tunnelOnly) {
+          // Tunnel-only mode: one exit whoosh, no dial/language/panel cues.
+          if (pending(3.35)) air({ t0: at(3.35), dur: 0.6, from: 1800, to: 260, gain: 0.05 });
+          return;
+        }
         [5.2, 5.4, 6.45, 6.75, 7.0].forEach((d, i) => {
           if (pending(d)) tone({ f: 1180 + i * 120, type: 'sine', t0: at(d), dur: 0.14, gain: 0.03 });
         });
@@ -583,10 +615,11 @@ window.__ModuleLoader__.load({
       });
       const audioRef = useRef(null);
       const [compatMode] = useState(readCompatibilityMode);
+      const [tunnelOnly] = useState(readTunnelOnly);
 
       useEffect(() => {
         const finish = () => setLeaving(true);
-        const leaveAt = reduced ? T_REDUCED_LEAVE : T_END * 1000;
+        const leaveAt = reduced ? T_REDUCED_LEAVE : (tunnelOnly ? T_TUNNEL_LEAVE : T_END * 1000);
         const doneAt = reduced ? T_REDUCED_UNMOUNT : T_UNMOUNT * 1000;
         const timers = [
           window.setTimeout(finish, leaveAt),
@@ -611,7 +644,7 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (reduced) return undefined;
         if (!compatMode) {
-          audioRef.current = createBootAudio();
+          audioRef.current = createBootAudio(0, tunnelOnly);
           return () => {
             if (audioRef.current) audioRef.current.close();
             audioRef.current = null;
@@ -626,7 +659,7 @@ window.__ModuleLoader__.load({
         const start = () => {
           events.forEach((name) => window.removeEventListener(name, start, true));
           if (disposed) return;
-          audioRef.current = createBootAudio((performance.now() - startedAt) / 1000);
+          audioRef.current = createBootAudio((performance.now() - startedAt) / 1000, tunnelOnly);
         };
         events.forEach((name) => window.addEventListener(name, start, true));
         return () => {
@@ -635,7 +668,7 @@ window.__ModuleLoader__.load({
           if (audioRef.current) audioRef.current.close();
           audioRef.current = null;
         };
-      }, [reduced, compatMode]);
+      }, [reduced, compatMode, tunnelOnly]);
 
       if (done) return null;
 
@@ -651,15 +684,15 @@ window.__ModuleLoader__.load({
         !reduced && h(Burst, { compatMode }),
 
 
-        !reduced && h(DialSequence, { compatMode }),
+        !tunnelOnly && !reduced && h(DialSequence, { compatMode }),
 
-        h('div', { className: 'sao-lang' },
+        !tunnelOnly && h('div', { className: 'sao-lang' },
           h('span', { className: 'sao-pill sao-pill-lang' }, 'Language'),
           h('span', { className: 'sao-pill sao-pill-jp' },
             h('i', { className: 'sao-tri' }),
             h('span', null, SETTINGS.languageName))),
 
-        h('div', { className: 'sao-login' },
+        !tunnelOnly && h('div', { className: 'sao-login' },
           h('div', { className: 'sao-login-title' }, 'Log in_::'),
           h('div', { className: 'sao-login-form' },
             h('div', { className: 'sao-field-row' },
@@ -672,7 +705,7 @@ window.__ModuleLoader__.load({
                 h('i', { className: 'sao-star s2' }, '****'),
                 h('i', { className: 'sao-star s3' }, '**'))))),
 
-        h('div', { className: 'sao-reg' },
+        !tunnelOnly && h('div', { className: 'sao-reg' },
           h('div', { className: 'sao-reg-tab' }, 'キャラクター登録'),
           h('div', { className: 'sao-reg-panel' },
             h('p', { className: 'sao-reg-text' },
@@ -933,6 +966,23 @@ window.__ModuleLoader__.load({
           h('small', null, props.t('compatModeHint'))));
     }
 
+    function TunnelOnlyToggle(props) {
+      const [enabled, setEnabled] = useState(readTunnelOnly);
+      return h('label', { className: 'sao-compat-toggle' },
+        h('input', {
+          type: 'checkbox',
+          checked: enabled,
+          onChange: () => {
+            const next = !enabled;
+            writeTunnelOnly(next);
+            setEnabled(next);
+          },
+        }),
+        h('span', { className: 'sao-compat-toggle-text' },
+          h('strong', null, props.t('tunnelOnly')),
+          h('small', null, props.t('tunnelOnlyHint'))));
+    }
+
     function SaoSettingsSection(props) {
       return h('section', {
         style: { width: '100%', maxWidth: 760, padding: '8px 0 32px' },
@@ -948,6 +998,7 @@ window.__ModuleLoader__.load({
           },
         }, props.t('settingsDescription'))),
       h(CompatModeToggle, { t: props.t }),
+      h(TunnelOnlyToggle, { t: props.t }),
       h(SaoSettingsCard, props));
     }
 

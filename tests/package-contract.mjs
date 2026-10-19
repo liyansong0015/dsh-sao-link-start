@@ -50,4 +50,41 @@ assert.match(
   'The original frame-by-frame path must remain in the bundle for the toggle.',
 );
 
+// Tunnel only must be an independent opt-in that renders just the beam tunnel.
+assert.match(
+  clientSource,
+  /dsh:sao-link-start:tunnel-only/,
+  'The client bundle must ship the tunnel-only preference key.',
+);
+assert.match(
+  clientSource,
+  /function readTunnelOnly\(\)/,
+  'The client bundle must resolve the tunnel-only preference on mount.',
+);
+assert.match(
+  clientSource,
+  /const \[tunnelOnly\] = useState\(readTunnelOnly\);/,
+  'The tunnel-only flag must be read on every overlay mount.',
+);
+assert.match(
+  clientSource,
+  /const T_TUNNEL_LEAVE = 3700;/,
+  'Tunnel-only mode must fade the overlay out around 3.7s.',
+);
+assert.match(
+  clientSource,
+  /!tunnelOnly && !reduced && h\(DialSequence/,
+  'Tunnel-only mode must skip the five-sense dial sequence.',
+);
+assert.match(
+  clientSource,
+  /!tunnelOnly && h\('div', \{ className: 'sao-login' \},/,
+  'Tunnel-only mode must skip the login panel.',
+);
+assert.match(
+  clientSource,
+  /!tunnelOnly && h\('div', \{ className: 'sao-reg' \},/,
+  'Tunnel-only mode must skip the character registration dialog.',
+);
+
 console.log(`package contract ok: ${packageJson.name}@${packageJson.version}`);
