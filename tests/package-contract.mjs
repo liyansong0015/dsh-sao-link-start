@@ -16,31 +16,37 @@ assert.notEqual(
   'Feature UI plugins must not opt into stage-one immediate prefetch.',
 );
 
-// The performance mode must be a real opt-out: the bundle has to carry both the
-// fast path and the original frame-by-frame path, selected by a stored flag.
+// Compatibility mode must stay a real opt-in: the bundle carries both the
+// original frame-by-frame path (the default) and the compositor-friendly
+// fallback, selected by a stored flag.
 assert.match(
   clientSource,
-  /dsh:sao-link-start:performance-mode/,
-  'The client bundle must ship the performance-mode preference key.',
+  /dsh:sao-link-start:compatibility-mode/,
+  'The client bundle must ship the compatibility-mode preference key.',
 );
 assert.match(
   clientSource,
-  /function readPerformanceMode\(\)/,
-  'The client bundle must resolve the performance-mode preference on mount.',
+  /function readCompatibilityMode\(\)/,
+  'The client bundle must resolve the compatibility-mode preference on mount.',
 );
 assert.match(
   clientSource,
-  /if \(stored === 'off'\) return false;/,
-  'The performance mode must default to the fast path when no preference is stored.',
+  /if \(stored === 'on'\) return true;/,
+  'The compatibility mode must be opt-in: no stored preference means the original path.',
 );
 assert.match(
   clientSource,
-  /\.sao-root\.is-perf \.sao-tracked-dial\{font-size:15px;transform-origin:0 0/,
-  'The fast dial path must scale a fixed box instead of resizing it every frame.',
+  /if \(stored === 'off'\) return false;[\s\S]{0,200}?return false;/,
+  'The compatibility mode must default to the original rendering path.',
 );
 assert.match(
   clientSource,
-  /if \(!perfMode\) \{/,
+  /\.sao-root\.is-compat \.sao-tracked-dial\{font-size:15px;transform-origin:0 0/,
+  'The compatibility dial path must scale a fixed box instead of resizing it every frame.',
+);
+assert.match(
+  clientSource,
+  /if \(!compatMode\) \{/,
   'The original frame-by-frame path must remain in the bundle for the toggle.',
 );
 

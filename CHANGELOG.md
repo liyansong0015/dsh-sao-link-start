@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.1
+
+- Rename the 1.4.0 option from "Performance mode" to **Compatibility mode** and
+  make it **off by default**: the original 1.3.x rendering (the high-fidelity
+  performance path: 2x DPR, exact per-frame layout) is the default. The fallback
+  is for low-end GPUs or stutter.
+- Settings copy now states explicitly that the default (unchecked) state is the
+  original rendering path; check the box only when the overlay stutters.
+- Preference key is now `dsh:sao-link-start:compatibility-mode`; the old
+  `dsh:sao-link-start:performance-mode` key from 1.4.0 is ignored.
+- Measured with the fallback enabled (replay-isolated headless Chromium):
+  layout count 37 → 9, layout time 0.087 s → 0.028 s, style-recalculation time
+  0.979 s → 0.252 s.
+
 ## 1.4.0
 
 - Add an opt-in **Performance mode** (Settings → SAO Link Start, on by default).
